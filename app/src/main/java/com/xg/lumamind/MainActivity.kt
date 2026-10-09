@@ -196,7 +196,7 @@ class MainActivity : Activity() {
         gap(mainArea, 17)
         mainArea.addView(label("Knihovna  •  ${data.length()}", 18f, Color.WHITE, true))
         gap(mainArea, 12)
-        val scroller = ScrollView(this).apply { fillViewport = true }
+        val scroller = ScrollView(this).apply { isFillViewport = true }
         val cards = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }
         scroller.addView(cards)
         mainArea.addView(scroller, LinearLayout.LayoutParams(-1, 0, 1f))
