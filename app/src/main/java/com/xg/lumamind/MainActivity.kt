@@ -4,16 +4,10 @@ import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
 import android.graphics.drawable.GradientDrawable
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
-import android.view.WindowManager
-import android.graphics.BitmapFactory
 import android.graphics.Color
 import android.graphics.Typeface
 import android.net.Uri
 import android.os.Bundle
-import android.os.ParcelFileDescriptor
 import android.graphics.pdf.PdfRenderer
 import android.provider.OpenableColumns
 import android.text.Editable
@@ -30,7 +24,6 @@ class MainActivity : Activity() {
     private val prefs by lazy { getSharedPreferences("documents", MODE_PRIVATE) }
     private val recognizer by lazy { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
     private lateinit var list: LinearLayout
-    private lateinit var status: TextView
     private var search = ""
     private val pickCode = 42
 
@@ -100,8 +93,8 @@ class MainActivity : Activity() {
             background = shape(surface, 22)
             setPadding(dp(5), dp(5), dp(5), dp(5))
         }
-        listOf("⌂\\nDomů", "▤\\nDokumenty", "✦\\nOCR", "⚙\\nNastavení").forEachIndexed { index, title ->
-            nav.addView(label(title.replace("\\\\n", "\\n"), 11f, if (index == 0) purple else muted, index == 0).apply {
+        listOf("⌂ Domů", "▤ Dokumenty", "✦ OCR", "⚙ Nastavení").forEachIndexed { index, title ->
+            nav.addView(label(title, 11f, if (index == selectedTab) purple else muted, index == selectedTab).apply {
                 gravity = android.view.Gravity.CENTER
                 setPadding(0, dp(11), 0, dp(11))
                 setOnClickListener { selectedTab = index; render() }
