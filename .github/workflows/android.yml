@@ -28,9 +28,24 @@ jobs:
           test -d "$ANDROID_HOME"
           ls "$ANDROID_HOME/cmdline-tools"
       - name: Install Android platform
+        shell: bash
         run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platforms;android-35" "build-tools;35.0.0"
+          set -euo pipefail
+          SDKMANAGER=""
+          for candidate in "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager" "$ANDROID_HOME/cmdline-tools/bin/sdkmanager" "$ANDROID_HOME/tools/bin/sdkmanager"; do
+            if [ -x "$candidate" ]; then SDKMANAGER="$candidate"; break; fi
+          done
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$ANDROID_HOME" -type f -name sdkmanager -print -quit)"
+          fi
+          if [ -z "$SDKMANAGER" ]; then
+            echo "::error::sdkmanager is missing from ANDROID_HOME=$ANDROID_HOME"
+            find "$ANDROID_HOME" -maxdepth 3 -type d | head -80
+            exit 1
+          fi
+          echo "Using $SDKMANAGER"
+          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
