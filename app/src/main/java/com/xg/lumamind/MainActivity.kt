@@ -1,5 +1,8 @@
 package com.xg.lumamind
 
+import android.content.ClipData
+import android.content.ClipboardManager
+import android.content.Context
 import android.app.Activity
 import android.app.AlertDialog
 import android.content.Intent
@@ -23,13 +26,12 @@ import org.json.JSONObject
 class MainActivity : Activity() {
     private val prefs by lazy { getSharedPreferences("documents", MODE_PRIVATE) }
     private val recognizer by lazy { TextRecognition.getClient(TextRecognizerOptions.DEFAULT_OPTIONS) }
-    private lateinit var list: LinearLayout
     private var search = ""
     private val pickCode = 42
 
-    private val bg = Color.rgb(12, 13, 26)
-    private val surface = Color.rgb(27, 28, 48)
-    private val purple = Color.rgb(151, 111, 255)
+    private val bg = Color.rgb(10, 12, 23)
+    private val surface = Color.rgb(24, 27, 44)
+    private val purple = Color.rgb(164, 127, 255)
     private val muted = Color.rgb(173, 174, 197)
     private lateinit var mainArea: LinearLayout
     private var selectedTab = 0
@@ -298,7 +300,7 @@ class MainActivity : Activity() {
 
     private fun options(index: Int) {
         val doc = records().getJSONObject(index)
-        AlertDialog.Builder(this).setItems(arrayOf("Přejmenovat", "Zobrazit OCR text", "Odstranit z knihovny")) { _, which ->
+        AlertDialog.Builder(this).setItems(arrayOf("Přejmenovat", "Zobrazit OCR text", "Kopírovat OCR text", "Sdílet OCR text", "Odstranit z knihovny")) { _, which ->
             when (which) {
                 0 -> {
                     val field = EditText(this).apply { setText(doc.optString("name")) }
@@ -312,7 +314,24 @@ class MainActivity : Activity() {
                 1 -> AlertDialog.Builder(this).setTitle("Rozpoznaný text")
                     .setMessage(doc.optString("text", "Nejdříve spusť OCR."))
                     .setPositiveButton("OK", null).show()
-                2 -> AlertDialog.Builder(this).setMessage("Odstranit z knihovny? Původní soubor zůstane zachován.")
+                2 -> {
+                    val text = doc.optString("text")
+                    if (text.isBlank()) toast("Nejdříve spusť OCR") else {
+                        val clipboard = getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                        clipboard.setPrimaryClip(ClipData.newPlainText("OCR text", text))
+                        toast("Text zkopírován")
+                    }
+                }
+                3 -> {
+                    val text = doc.optString("text")
+                    if (text.isBlank()) toast("Nejdříve spusť OCR") else {
+                        startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).apply {
+                            type = "text/plain"
+                            putExtra(Intent.EXTRA_TEXT, text)
+                        }, "Sdílet rozpoznaný text"))
+                    }
+                }
+                4 -> AlertDialog.Builder(this).setMessage("Odstranit z knihovny? Původní soubor zůstane zachován.")
                     .setPositiveButton("Odstranit") { _, _ ->
                         val data = records()
                         val next = JSONArray()
