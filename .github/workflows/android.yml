@@ -56,7 +56,20 @@ jobs:
           gradle --version
           echo "ANDROID_HOME=$ANDROID_HOME"
       - name: Compile debug APK
-        run: gradle --stacktrace --no-daemon --console=plain :app:assembleDebug
+        shell: bash
+        run: |
+          set -o pipefail
+          gradle --no-daemon --console=plain :app:assembleDebug 2>&1 | tee build-debug.log
+      - name: Summarize build errors
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Android build errors" >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          grep -n -E "^e: |^error: |^\\* What went wrong:|^Execution failed for task|^> .*failed|^FAILURE:|^Caused by:" build-debug.log | head -80 >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "=== FIRST COMPILER ERRORS ==="
+          grep -n -E "^e: |^error: |^\\* What went wrong:|^Execution failed for task|^> .*failed|^FAILURE:|^Caused by:" build-debug.log | head -80 || true
       - name: Compile release AAB (unsigned)
         run: gradle --stacktrace --no-daemon --console=plain :app:bundleRelease
       - name: Upload outputs
