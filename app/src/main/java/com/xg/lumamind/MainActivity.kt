@@ -109,7 +109,7 @@ class MainActivity : Activity() {
 
     private fun showAbout() {
         AlertDialog.Builder(this).setTitle("LumaMind AI")
-            .setMessage("Verze 1.2 • Soukromá knihovna dokumentů. OCR probíhá na zařízení. AI chat a placené funkce zatím nejsou dostupné.")
+            .setMessage("Verze 1.2 • Soukromá knihovna dokumentů. OCR probíhá na zařízení včetně všech stránek PDF. AI chat a placené funkce zatím nejsou dostupné.")
             .setPositiveButton("Rozumím", null).show()
     }
 
@@ -342,40 +342,85 @@ class MainActivity : Activity() {
         }.show()
     }
 
+    private fun storeOcr(uri: Uri, value: String) {
+        val data = records()
+        for (i in 0 until data.length()) {
+            val item = data.getJSONObject(i)
+            if (item.optString("uri") == uri.toString()) {
+                item.put("text", value)
+                save(data)
+                return
+            }
+        }
+    }
+
     private fun recognize(index: Int) {
         val doc = records().getJSONObject(index)
         val uri = Uri.parse(doc.getString("uri"))
         toast("Rozpoznávám text…")
         try {
             val mime = contentResolver.getType(uri) ?: ""
-            val input = if (mime == "application/pdf") {
-                val descriptor = contentResolver.openFileDescriptor(uri, "r") ?: throw Exception("PDF nelze otevřít")
-                val bitmap = descriptor.use { fd ->
-                    PdfRenderer(fd).use { renderer ->
-                        if (renderer.pageCount == 0) throw Exception("Prázdné PDF")
-                        renderer.openPage(0).use { page ->
-                            val scale = minOf(2f, 2000f / maxOf(page.width, page.height))
-                            val bitmap = android.graphics.Bitmap.createBitmap(
-                                maxOf(1, (page.width * scale).toInt()),
-                                maxOf(1, (page.height * scale).toInt()),
-                                android.graphics.Bitmap.Config.ARGB_8888
-                            )
-                            bitmap.eraseColor(Color.WHITE)
-                            page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
-                            bitmap
-                        }
+            if (mime != "application/pdf" && !doc.optString("name").endsWith(".pdf", true)) {
+                recognizer.process(InputImage.fromFilePath(this, uri))
+                    .addOnSuccessListener {
+                        storeOcr(uri, it.text)
+                        toast(if (it.text.isBlank()) "Text nebyl nalezen" else "Text rozpoznán")
+                    }.addOnFailureListener { toast("OCR selhalo: ${it.localizedMessage}") }
+                return
+            }
+            val fd = contentResolver.openFileDescriptor(uri, "r") ?: throw Exception("PDF nelze otevřít")
+            val renderer = try { PdfRenderer(fd) } catch (e: Exception) { fd.close(); throw e }
+            if (renderer.pageCount == 0) {
+                renderer.close(); fd.close()
+                toast("PDF je prázdné")
+                return
+            }
+            val output = StringBuilder()
+            var pageNumber = 0
+            fun closePdf() {
+                try { renderer.close() } catch (_: Exception) {}
+                try { fd.close() } catch (_: Exception) {}
+            }
+            fun nextPage() {
+                if (pageNumber >= renderer.pageCount) {
+                    closePdf()
+                    storeOcr(uri, output.toString().trim())
+                    toast("OCR dokončeno: ${pageNumber} stránek")
+                    return
+                }
+                var bitmap: android.graphics.Bitmap? = null
+                try {
+                    renderer.openPage(pageNumber).use { page ->
+                        val scale = minOf(2f, 2000f / maxOf(page.width, page.height))
+                        bitmap = android.graphics.Bitmap.createBitmap(
+                            maxOf(1, (page.width * scale).toInt()),
+                            maxOf(1, (page.height * scale).toInt()),
+                            android.graphics.Bitmap.Config.ARGB_8888
+                        )
+                        bitmap!!.eraseColor(Color.WHITE)
+                        page.render(bitmap!!, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
                     }
+                    val image = bitmap!!
+                    recognizer.process(InputImage.fromBitmap(image, 0))
+                        .addOnSuccessListener { result ->
+                            if (output.isNotEmpty()) output.append("\\n\\n")
+                            output.append("— Strana ${pageNumber + 1} —\\n")
+                            output.append(result.text)
+                            image.recycle()
+                            pageNumber++
+                            nextPage()
+                        }.addOnFailureListener { error ->
+                            image.recycle()
+                            closePdf()
+                            toast("OCR selhalo na straně ${pageNumber + 1}: ${error.localizedMessage}")
+                        }
+                } catch (e: Exception) {
+                    bitmap?.recycle()
+                    closePdf()
+                    toast("Chyba PDF: ${e.localizedMessage}")
                 }
-                InputImage.fromBitmap(bitmap, 0)
-            } else InputImage.fromFilePath(this, uri)
-            recognizer.process(input).addOnSuccessListener { result ->
-                val data = records()
-                if (index < data.length() && data.getJSONObject(index).optString("uri") == uri.toString()) {
-                    data.getJSONObject(index).put("text", result.text)
-                    save(data)
-                }
-                toast(if (result.text.isBlank()) "Text nebyl nalezen" else "Text rozpoznán")
-            }.addOnFailureListener { toast("OCR selhalo: ${it.localizedMessage}") }
+            }
+            nextPage()
         } catch (e: Exception) { toast("Chyba: ${e.localizedMessage}") }
     }
 
