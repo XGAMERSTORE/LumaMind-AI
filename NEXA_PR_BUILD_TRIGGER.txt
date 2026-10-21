@@ -1,0 +1,1 @@
+Run Nexa Social CI via pull_request.
