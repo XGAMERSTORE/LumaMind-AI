@@ -1,22 +1,32 @@
-name: Build Nexa Social APK
-
+name: Android APK and AAB
 on:
   push:
-    branches: [main]
+    branches:
+      - main
+      - master
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    name: Compile Android
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
+      - name: Checkout source
+        uses: actions/checkout@v4
+      - name: Install JDK 17
+        uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
+      - name: Locate preinstalled Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          test -d "$ANDROID_HOME"
+          ls "$ANDROID_HOME/cmdline-tools"
       - name: Install Android platform
         shell: bash
         run: |
@@ -28,41 +38,46 @@ jobs:
           if [ -z "$SDKMANAGER" ]; then
             SDKMANAGER="$(find "$ANDROID_HOME" -type f -name sdkmanager -print -quit)"
           fi
-          test -n "$SDKMANAGER"
+          if [ -z "$SDKMANAGER" ]; then
+            echo "::error::sdkmanager is missing from ANDROID_HOME=$ANDROID_HOME"
+            find "$ANDROID_HOME" -maxdepth 3 -type d | head -80
+            exit 1
+          fi
+          echo "Using $SDKMANAGER"
           yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
           "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"
-      - uses: gradle/actions/setup-gradle@v4
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Restore Android project
-        shell: bash
+      - name: Verify toolchain
         run: |
-          echo 'H4sIAAAAAAAAA+1cW2/kOHaeZ/8KjgKMVWm16uLruFzu8aW67Ynt8trVM5lJAkMl0WW1VZKWVJXtcRvIU5CHLJDkbbFAFg0kAQZI/kCC5KWn/8j+gv0JOYekJKoutmu625vGFOFLFS+HhzyHh985pOSEHot8r/zZR0yVSqW2srSE/zHh/+rKUjX9LvKqS7Xl5cry8lKl9lmlWltYWPmMLH1MptLU54nDCPmMRVFyV73I8U/5ucOo9xhcPVpylPw5TRI/7HK7yxwvoB+0DxTw8uLiRPkvVpeG5L+0AOpCKh+UiwnpFy7/OOh3/fDACZ0u7dEwITeE0TjifhIxn3L42o2ibkDNUp30nAENt6EScwL8LlXlSFA4iliCueSW3M55NKahR0P3+pjyKOgnfjS5i4PIozaon3k8nPl8c2//tHV4enTc+rq53T49bh61TqDfBzIoWEGxHrHoFXUTO3R6tDF/SK+ck8j1nWB+zg/doO9RMr/mxPH83J9aGH+ClK5/GP9H2wOmt/8L1erM/j9K0uXPmftRdGAa+S8uLKD8V6rVmfwfIw3Lv+f44YdWgunX/+LyQm0m/8dIY+W/KTNhy/bPKE/sq17wPn3cg/+q1YXFovxrlcVaZYb/HiOt95SQCQg55GtKHxrGeZLEa+Uyd89pz+G2yrfdqAe6clFmlJdVnrExRyCt9znlT2PKej7nAPiIKl4TsMtICeQV7L3DdvP4sNk2SFmRAC0MfNdJ9OYJMADtv+LJdUDLm3HcxgwjKw+cDg0aBsI6InFdXoYsbQfUYQm9StrMOTvz3YaRsL7W3gmC6HLLcS/6sSqSzEiG3MQf+Mn10GDsA1gmm6osJ0WvYoDB1BuhI2j5YQLQ9OmZHySUFcuyviZOm2xsyzr2webeYTZrBSIwebQbsWGGh8iktez9zZeH27vN4xFi6+UJ7K6X0zlRMitrQtuYWy+nCrXxS4TTn1waa/9fOQPnA4KA6fHf0tLS8mz/f4w0Wf5o6T9MH9PLf3kBIMFM/o+Q7pb/pR94nSh8z/Dw1PKvgQc4W/+Pkh4o/xDQFRfg6meowtT+X61WW575/4+Sppe/Dn1trHlvH3f7f7VqbcT/W1qqzeL/j5JicHycLiUgbTuVtp1Luz435/fQqUn9CRsUxf7z+nBuxMdkupH0NkZLusyJz32X29tRELGR4oFPL8e0uvS9LtXJRaxrv+LgD+VZqJDAf2K/PN5vhm7kUTZU5ke2C3LkUOckAdIO87bld16s2U/8AMfg9hlTw5iL+x3wdYgbOJwTfSUQcDBp6HGSZdwI92jfD8H93Heuo35CUMcsEvg8qZPN2CdO7NfJTod4nTppXlG3n0TshLKB71LiR400i8OALrcd8MS99jmjjncURXgAIzo4SZgfdkkSXdCwYRgWAZ+XSafPqBNw4ojw1yiMMWlU6iPCORE6fcToGYVRupSTGD5zSRybd7oNISWbdTtmdcHCn9WSRVyYOK2ktmrBzwKWOK4LlPVWlVVrZcWCZQ2l6Iqrsm9399pNi/T66DNr1Vcrlvj9cgkGKRj5qjWgjPkeJUoCAxgDicJtmI6Emlv90Aso6ZRuCO/HlNlZSadUlwNqgOqMjNU0UNUN66C10zw9Ot77ZrPdhAZepwEzDpIxk3OfQwY/jy73o64f4inTreCoDcP4BvSUJANTyYBbOF88Bi6y0oGglH5N6Q3wwAszzcI3MQUmTpCee+L/QE2gqrKOHM+D3szqopX+iDOxpM9CMkjZa3q+aAwijPtJyuE5MAjcZYVUcJd+TbkTx3G7UNUU9bWMnEkhs7RohHeRewI9BhQXgInhkDQbQy1dFoHEZBPUo7QsG9uyVa1Z4i8U6WvIlv+OHOb0QFUF/xPLzadV6ylSiJH4gcNAgtysWKsW/KZ9FhrE+VTSdCq3+kkShaSThJmgYQ7TXMGB/JLOX6cg3U5xhjTNTwuHZ0Sun4858M5dA++kAxdrrONwasJ40XaNdJqOGAuRZIv5wLkIBZkF5r5pHrf3tjf3tbqZrIXhqOKPVjo8J50uLkMKkyjMllhMWLdUYDaJHJ7oUmL9sBW+9KXZNM3S0402VrF7zgXNVN7ilszdbx6+aO+e7rcOX5RsXPNmqUgfyB3SxITfr6MOeQUdwG7C+52enwjiNyRh1zfklQ0VhalwncQ9N5tXLo1FcI+WbiSP1AZ7dEA5h80Xe7klt1lXGHljZw5sArKjm7Rvs5Scs+iSk4xg/XYu506zUjdZvE7KT00sTLk0QwOzEDAFCZTG1Tm5gGX+02/Ct/9DLgIULdjSiAxg90vCt/9JBAnYbsA2G1Z1qaS2pIL9kcUNaYaMTY9RnrbpWyR04ne/tYkKNle/rNnV5VW7ai9V1lZXVlcMIXSsmy0pYcxx8qSUTSPtP41YVyt2xa7ZNUVgHE+4RaYcvXz3v/4AdoqAX7z9kbzqvf0xjLDbrHIMW31aeZfyQJRiJrK0h/nt65ialavVqtaXMg8BiqOBpsM4evdb/zx4+4b7CVJQFRjtyuJvrpNBBFUS8va/fvoNFXUK8pDjLNULmTiSoSxkbShLcDGUBx1r7GKW3Qq3YWu92Ad8QkPKSDdqDFCn1XrqN7A3nHohiJKdREoG8JH5PRM297ghZmZcnXpKBzWyoaR6BzEAL2dm3/Z5sxcn12bp9evYDmjYTc7N0vri69dIJi9N1xXMYxy8+3ulNZYSKHHIOYrOhlmVVg4WnNQkCnKGPkGMwwqFHZQQ7wbXyA2ANWH/ALiZoqheCJgr0yCtwNcnrcNWBy+dkE7kXYt2eZ7szjRSpGZYfZWDk3cZMc+w0B5rVFgDurfjCEY4aDRAds+MMvxFSTFjzSgLCQPL0Bk0lGCQ6atEZKFOZfBQFGtMCXaMkt4oY1AO35Z0xd/6kGlFO7q2hhZoN+rhXg/m7DafIcGf2CGKOmZ2I7HxdCeVCQrDRg67GGfjCmC747CJ+xWU3bld7baO975vHbbFhpUjPT8JaGPIdgI2NZ6kE2XVaop6ZkWxjXX3Zl2BvdqqlnSjcAZm8lwahj/83X8bQ0RV+T1kv0S6I2Yd6GiaW5gxebjEJ86aKn/4zKnhoPeC3ocYzmE0gN0EPDDdCoIPnvS5rHAiPmuFCANiVXbRj/3QMTRm0nGpTh481cPtJQs/u7lg8sGtCxJRpDSpnLgsCgKhc1w6EHlOKgz0IidKCgsfisf4IN8noNnItjO4Z1QANStiVBn7Sj3HLWnYT4LIQYc74QJcKbFNqAtoA8z7js+E1URmhZQm1EbTILWHSuJCKHeSfoE1RF2NrdToZDZHK8uNzojB32TMuSaOsNRgRE2jjFrOpUnNKpiGyh22oIKQEByjvWhAN6W8kR+JKs8ABqOD6YMb76872WZY9588KRX2HLfhDBl3P19OHbGUTNeO4mQrigLqwMLy+amYLKP0zPjj7//p3whsKn/8/T//BzFKT9zCPoL2DDKNvw6NJ4JGWoKg8LQnES2gMUReIn7gew1BYQ/8ScP3jNT9mCBAnGfT96wCbdmrZWwLs1FKNTyzaQI/T4u1R+VcVLdc1GdgcwLda1Zw8Kv+BPAocEJAGdByYOuzt/p+4MEYxfIUUBYHVDSGmC1GQ8XHI7zi6g+oci1zfGhYpmddgrJMQhwaVlAqWPbEkAzrPhxCxwMyRuMA3BEYsBCsAmiagEewhBpSUeyj+q4LfHzfwgEriRk5pF1Hn5HvWf/dG5yPsB8Eqb82QaZqnd+M3/g60dUkUwpFDzWkmX4IeKVU5PDtmx/ogHCxcV0XHIse7XUoy3yLn/4BFjTow49rxAlDx4ppAnBMMJDtcQ5CKz1H0dCM7zSq90bx5WjaB9R/rv4pA8hYhnelxYNBo+1K3fI1xfR4XeNxAIAc9KxUQgfgc660TYP62IXQ3KxsSEEnYmejLKwcn7QS5CrAv3d5JqqyGoZhATsfeC1M5ACt1/ushrwTwayVRo9RJ7TVoYWMfa8+LbyeBl2nm5LjXqRw9x8NSSJHrO7FA6FuAXkPFPiuVUsPBWajSBk7v2O3kp7IdNDtLuQ2BXAbwW3vC9sK4uU09CYxiWUPFnBu7ng3M4qwIN+9IT/E7O2bQf8Pf/vvRq4ISgv+5V8N1VFm6nj3oWIstOs8UHeGgi2hB8KfIPkbtWx6DWDqzhgGWLCeZrlU7AFbpfEsA0MSmiXVbJUCU7yM3EwyWWhdTsGmWL6ncjAIYFg9GBLiVoV7OJgVtB34Q0byxwHevIIwFQ9AvhKn6gA4HcEzxWXDeIJsFvFwWgkmYhTDXZWAoNexXXH8VRyM1jeIs+FMgaiR0SKeRr0oImptC+k1sHgUUqdbGj7txBo9HbLKPKMQP8DYgSkLbPrrvhNwM8VegLvb18aaLAR4vUaMJwV6Qqolq7qM7sAd5ygFYJyIwyw5eSkABqsvCGebkSU7tcZ1V8hzxZGadyoweP12CsA9AW8XHbaReM64vYF8H//0uyS3FzDSPLzqOYnyEI0RW+5eDGXB/w9mix9g9T+UuX7ghgSEJxmvUT9mOwIVJt5Pv3tFn8HMTee9pBN+j/+i5DMWPWo2jyt1mGTupHG7G55Jw5cr1nSQ6Xak+TjrqKmtPpLxcYBsUMOmLy+ov4fpGg4FaIaLj4sEFA0SYOYnfHzUV3r5hcLUDK0AI5Ot0LARmtJW4M/c7ez++COk6e9/bYJaP+jaV5buef5nYam2MHT/a2EZ73/O7n99/PTg+1+T7lr50bjbV8NZd166Kt6qwotREgqobO3Y8CUL6mOK5ImUXoCHdMV2pRuC+5etvjbEXpGWpSfvaI81slhFu0wAYJ43GmKzSO9K4B0r3uDZkeXluQ87I7fxKti3Pphko4yBDKzC+x0ujWjF4pnFflrNL17wenrSpUahGXKxPSpeYic5t4bPGEtk+G6AeM5eEGYANilur0etk7ZhKQLqsPB2Qo+4dWkdPoj+i2ZOXsxTPiImAqWFuIxqlTpTNDmPPItMO8gMNb483id9FpCGiIHBt1S85IkcQe7q7iZJDBW2ozCk8qkrt2GOZJaAGuBfGuZZpkbExf3vWA7iQDBvyjHAqEWZatb2exRR5SrYurToGDb5NL9aEQVj6R4x6J+B72hsujhiwzK0x63KuCANrSloqFgLnwst/eKLz8U3PXQ2gXgf+Gb+D4Iq9LEFKJQycEFE+2IHKAdJX0PsGd87UaufIFJTV77G96du8TzFmxNjhlQnylg0+snZ01Vj6KgdEJApewFdoU6PRFweMeiZeCUACuxL5uM1QGBaR4pQees6Afg2bI3sl+3np6v5tZ8c+onhA+bCO6Wyu2PK4yjkdBtydMUQl0IUa37YMLHFRqNWqXzxBX5cXwBxP1NnIhq/ayKryVjE0iwtriQ4V0iccHntrJBpFsXkh6mQxHxt9c/w0qOHigcEOkzdW9Nz8QxVZ17l+qE1aZZK2eWQADyX1PyZ+KXRYTZCWXH/r1RSzADneKMCzKOohNOsTa+22tGhh7qpmWw0Ks+GHYK1oQyorgVKC5Mhph0E8Pq1lAVKQJoSYSv2Wpk9MdHz0nxeiuIAFd1tt49gPWDz4lGnMIDQKPUSPjHYOj3+2+lMCf/uw3+1pVp1GP8tLq7M8N9jpKnv/0++1A/evSMuZfFfB2Bz76qx3Wdcu/evY8siGNzpZBfrT361D1RbYDt2aQD7SBEk7nRMsalcgYFOb4GbriXud58GkesEtteRnr5VHUY9xcvksqMdxSvxOto+53VsekVdqAKb2HFzs90k7c2t/SYRITZThTkJPtn+onlsYdBb+06OjvcONo+/I3/R/M5SUUPSbv5lW4Ix9TEPs4mMklGIQBRZfhnjS5jG8CyuojviL/A/2rQYEsRtDS/PFE+FVFwwxdHAYfpZsahNTHov1wlgp1e33gt5pri/XgxZ44c8W86VCGRneSqKqkKUeb4MAykEm5LNw5NWymBuqWFr/RaggNMJsmnCQ0XYvlmCSL2FKO8M5gcp4eQoZRlYxbm1t1uHz/f35Ouo9je3m+Okk4eBhuPWaqa1mdNDRiPnpnKhADrtSsw4xD5zLn/Vp7C9GyfN/eZ2W+lbGtEVItPU6flx60ByRL7dbR43SRqWf0Zaxzugn1vfkVQKOb74q79R5x32ACXZOhNqXrrVJlfcT5Gbv2tjvKodHYroXPFeSjRyEbJOIik8oQ7pGWmllBekGqDfQqlq5VIT9NKaVlrQCa3OgrjDJepEYy+P+N0wYqjht/L2R3B949puEInA9O3w/u98orv/hP0fX+7xAfv4Gc//L9Zmz/8+Spoof7HWP4waTP38b3V5pTZ7/9OjpPvkL0NW/L1eAXUP/q9UK8PP/1artVn891HSOsg66jOX8o11KWui3hgUx6fiFGhDu+y+rvRhY72ct/vUtrxZ0tL96/86oO+3/O9d/8uV4fOfysry4mz9P0bS1v/cuhC2Wv/5i9ZiBx9/z94htiZfxCYK7QNA1wwMg73vd88T+zDaFGHyLYelb4UD16lHCi8hWzsDv/C50/ODa2ODOyFfL2OlyfVdPFneFA/FGht/try9uPP8+X1tQmfgdx3FiziahqaVncpOtXZfU3koP3WzSz/0oksxDycpBWPjzAk4TZuuy+WEH/6/mE99/XcwkPwRXgB+3/pfrC2OvP97Zbb+HyXJ93/ja7R9j8xjFFB70Ud6KDOPp3gqX4XdUPd5jM8oz08IHc6LelAY+wE98S7IwpI8CvTomdMP8HTszO9q53dah3vePWQx9fwQydaW8zCEw9DFl32lmQPK8G2TeEhDqsO5hzAMMl+1K3Zl/lN14d8rpev/Y619TPfi/2p15P2/ldn7fx4lZetfvnngLhuglgyZX7VX7IV5sV6vidjgfmGLZpZmaZZmaZZmaZZmaZZmaZZmaZZmaZZm6RNJ/wdqM/qGAHgAAA==' | base64 -d > /tmp/nexa.tgz
-          tar -xzf /tmp/nexa.tgz
-      - name: Build debug APK
-        id: nexabuild
-        continue-on-error: true
-        working-directory: android
+          java -version
+          gradle --version
+          echo "ANDROID_HOME=$ANDROID_HOME"
+      - name: Compile debug APK
         shell: bash
         run: |
           set -o pipefail
-          gradle :app:assembleDebug --stacktrace 2>&1 | tee /tmp/nexa-build.log
-      - name: Publish build diagnostics
-        if: always()
+          gradle --no-daemon --console=plain :app:assembleDebug 2>&1 | tee build-debug.log
+      - name: Summarize build errors
+        if: failure()
         shell: bash
         run: |
-          git fetch origin nexa-social-build
-          git checkout nexa-social-build
-          cp /tmp/nexa-build.log NexaSocial-build.log || true
-          if [ -f /tmp/NexaSocial-debug.apk ]; then cp /tmp/NexaSocial-debug.apk NexaSocial-debug.apk; fi
-          git config user.name "Nexa Build Bot"
-          git config user.email "actions@users.noreply.github.com"
-          git add NexaSocial-build.log NexaSocial-debug.apk 2>/dev/null || git add NexaSocial-build.log
-          git commit -m "Publish Nexa Social build diagnostics" || exit 0
-          git push origin nexa-social-build
-      - name: Fail if APK missing
-        if: steps.nexabuild.outcome != 'success'
-        run: exit 1
-      - name: Stage APK if build succeeded
-        if: steps.nexabuild.outcome == 'success'
-        run: cp android/app/build/outputs/apk/debug/app-debug.apk /tmp/NexaSocial-debug.apk
+          echo "## Android build errors" >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          grep -n -E "^e: |^error: |^\\* What went wrong:|^Execution failed for task|^> .*failed|^FAILURE:|^Caused by:" build-debug.log | head -80 >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "=== FIRST COMPILER ERRORS ==="
+          grep -n -E "^e: |^error: |^\\* What went wrong:|^Execution failed for task|^> .*failed|^FAILURE:|^Caused by:" build-debug.log | head -80 || true
+      - name: Compile release AAB (unsigned)
+        run: gradle --stacktrace --no-daemon --console=plain :app:bundleRelease
+      - name: Upload outputs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: LumaMind-build-outputs
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/bundle/release/*.aab
+          if-no-files-found: warn
