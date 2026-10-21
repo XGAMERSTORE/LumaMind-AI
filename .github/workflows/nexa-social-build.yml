@@ -5,6 +5,9 @@ on:
     branches: [nexa-social-build]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -31,3 +34,12 @@ jobs:
         with:
           name: NexaSocial-debug
           path: android/app/build/outputs/apk/debug/app-debug.apk
+      - name: Publish APK to build branch
+        shell: bash
+        run: |
+          cp android/app/build/outputs/apk/debug/app-debug.apk NexaSocial-debug.apk
+          git config user.name "Nexa Build Bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add NexaSocial-debug.apk
+          git commit -m "Build Nexa Social APK" || exit 0
+          git push
