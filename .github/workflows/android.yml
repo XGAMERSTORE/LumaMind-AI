@@ -1,8 +1,9 @@
-name: Build Nexa Social APK
-
+name: Android APK and AAB
 on:
-  pull_request:
-    branches: [main]
+  push:
+    branches:
+      - main
+      - master
   workflow_dispatch:
 
 permissions:
@@ -10,6 +11,7 @@ permissions:
 
 jobs:
   build:
+    name: Compile Android
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
@@ -20,6 +22,11 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Locate preinstalled Android SDK
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          test -d "$ANDROID_HOME"
+          ls "$ANDROID_HOME/cmdline-tools"
       - name: Install Android platform
         shell: bash
         run: |
@@ -28,22 +35,49 @@ jobs:
           for candidate in "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager" "$ANDROID_HOME/cmdline-tools/bin/sdkmanager" "$ANDROID_HOME/tools/bin/sdkmanager"; do
             if [ -x "$candidate" ]; then SDKMANAGER="$candidate"; break; fi
           done
-          if [ -z "$SDKMANAGER" ]; then SDKMANAGER="$(find "$ANDROID_HOME" -type f -name sdkmanager -print -quit)"; fi
-          test -n "$SDKMANAGER"
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$ANDROID_HOME" -type f -name sdkmanager -print -quit)"
+          fi
+          if [ -z "$SDKMANAGER" ]; then
+            echo "::error::sdkmanager is missing from ANDROID_HOME=$ANDROID_HOME"
+            find "$ANDROID_HOME" -maxdepth 3 -type d | head -80
+            exit 1
+          fi
+          echo "Using $SDKMANAGER"
           yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
           "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
-      - name: Build Nexa Social
-        working-directory: NexaSocialAndroid
+      - name: Verify toolchain
+        run: |
+          java -version
+          gradle --version
+          echo "ANDROID_HOME=$ANDROID_HOME"
+      - name: Compile debug APK
         shell: bash
         run: |
           set -o pipefail
-          gradle --no-daemon --console=plain :app:assembleDebug 2>&1 | tee ../nexa-build.log
-      - name: Upload APK
+          gradle --no-daemon --console=plain :app:assembleDebug 2>&1 | tee build-debug.log
+      - name: Summarize build errors
+        if: failure()
+        shell: bash
+        run: |
+          echo "## Android build errors" >> "$GITHUB_STEP_SUMMARY"
+          echo '```text' >> "$GITHUB_STEP_SUMMARY"
+          grep -n -E "^e: |^error: |^\\* What went wrong:|^Execution failed for task|^> .*failed|^FAILURE:|^Caused by:" build-debug.log | head -80 >> "$GITHUB_STEP_SUMMARY" || true
+          echo '```' >> "$GITHUB_STEP_SUMMARY"
+          echo "=== FIRST COMPILER ERRORS ==="
+          grep -n -E "^e: |^error: |^\\* What went wrong:|^Execution failed for task|^> .*failed|^FAILURE:|^Caused by:" build-debug.log | head -80 || true
+      - name: Compile release AAB (unsigned)
+        run: gradle --stacktrace --no-daemon --console=plain :app:bundleRelease
+      - name: Upload outputs
+        if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: NexaSocial-debug
-          path: NexaSocialAndroid/app/build/outputs/apk/debug/app-debug.apk
+          name: LumaMind-build-outputs
+          path: |
+            app/build/outputs/apk/debug/*.apk
+            app/build/outputs/bundle/release/*.aab
+          if-no-files-found: warn
