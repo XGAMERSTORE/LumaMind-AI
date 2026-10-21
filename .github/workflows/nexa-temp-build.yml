@@ -17,6 +17,20 @@ jobs:
         with:
           distribution: temurin
           java-version: '17'
+      - name: Install Android platform
+        shell: bash
+        run: |
+          set -euo pipefail
+          SDKMANAGER=""
+          for candidate in "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "$ANDROID_HOME/cmdline-tools/16.0/bin/sdkmanager" "$ANDROID_HOME/cmdline-tools/bin/sdkmanager" "$ANDROID_HOME/tools/bin/sdkmanager"; do
+            if [ -x "$candidate" ]; then SDKMANAGER="$candidate"; break; fi
+          done
+          if [ -z "$SDKMANAGER" ]; then
+            SDKMANAGER="$(find "$ANDROID_HOME" -type f -name sdkmanager -print -quit)"
+          fi
+          test -n "$SDKMANAGER"
+          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses >/dev/null || true
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" "platforms;android-35" "build-tools;35.0.0"
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
